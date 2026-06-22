@@ -1,6 +1,6 @@
 torch
 torchvision
-opencv-python
+opencv-python-headless
 fastapi
 uvicorn[standard]
 redis
@@ -9,3 +9,5 @@ timm
 python-multipart
 numpy
 pillow
+librosa
+soundfile

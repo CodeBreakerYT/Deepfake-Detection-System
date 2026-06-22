@@ -1,3 +1,4 @@
+import os
 import json
 import redis
 
@@ -13,21 +14,30 @@ class RedisManager:
         self.redis_client = None
         self.local_cache = {}
         self.local_tasks = {}
-        
+
+        # Render/managed Redis providers expose a single connection string (REDIS_URL)
+        # instead of separate host/port; prefer it when present.
+        redis_url = os.environ.get("REDIS_URL")
+
         try:
-            # Short timeout to avoid blocking startup if Redis is down
-            self.redis_client = redis.Redis(
-                host=host, 
-                port=port, 
-                db=db, 
-                socket_connect_timeout=2.0,
-                decode_responses=True
-            )
+            if redis_url:
+                self.redis_client = redis.from_url(
+                    redis_url, socket_connect_timeout=2.0, decode_responses=True
+                )
+            else:
+                # Short timeout to avoid blocking startup if Redis is down
+                self.redis_client = redis.Redis(
+                    host=host,
+                    port=port,
+                    db=db,
+                    socket_connect_timeout=2.0,
+                    decode_responses=True
+                )
             # Test connection
             self.redis_client.ping()
-            print(f"Connected to Redis at {host}:{port}")
+            print(f"Connected to Redis at {redis_url or f'{host}:{port}'}")
         except (redis.ConnectionError, redis.TimeoutError):
-            print(f"Warning: Redis is not running at {host}:{port}. Falling back to in-memory cache.")
+            print(f"Warning: Redis is not reachable. Falling back to in-memory cache.")
             self.redis_client = None
 
     def get_cached_result(self, file_hash: str) -> dict | None:
