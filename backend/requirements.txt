@@ -1,12 +1,13 @@
+Flask
+Flask-CORS
+python-dotenv
+firebase-admin
+gunicorn
 torch
 torchvision
 opencv-python-headless
-fastapi
-uvicorn[standard]
-redis
 transformers
 timm
-python-multipart
 numpy
 pillow
 librosa

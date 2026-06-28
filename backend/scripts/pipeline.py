@@ -124,6 +124,9 @@ class DetectionPipeline:
             update_progress_cb(95, "Aggregating Report")
 
         # Compute average metrics
+        global_score = 0.0
+        avg_blur = avg_freq = avg_color = 0.0
+        
         if all_face_scores:
             # We focus on the worst-offending face per frame to calculate the global score,
             # or the highest face score overall to decide if the video has a deepfake.
@@ -136,10 +139,23 @@ class DetectionPipeline:
             avg_blur = float(np.mean(all_blur_scores))
             avg_freq = float(np.mean(all_freq_scores))
             avg_color = float(np.mean(all_color_scores))
-        else:
-            # No faces detected. If no faces, we default the deepfake score to 0.0, 
-            # and set details indicating no faces were found.
-            global_score = 0.0
+            
+        if not is_image:
+            # Run the custom video sequence model if it's available
+            vid_sequence_score = self.classifier.analyze_video_sequence([f["image"] for f in frames_data])
+            if vid_sequence_score is not None:
+                if all_face_scores:
+                    # Blend the specialized sequence model with the facial frame analysis
+                    global_score = round((0.6 * vid_sequence_score) + (0.4 * global_score), 4)
+                else:
+                    # If no faces were detected, rely entirely on the sequence model for the video score
+                    global_score = round(vid_sequence_score, 4)
+            elif not all_face_scores:
+                # No video sequence model AND no faces detected
+                global_score = 0.0
+                
+        # If no faces were detected at all
+        if not all_face_scores:
             avg_blur = 0.0
             avg_freq = 0.0
             avg_color = 0.0

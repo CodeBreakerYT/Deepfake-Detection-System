@@ -19,6 +19,11 @@ class RedisManager:
         # instead of separate host/port; prefer it when present.
         redis_url = os.environ.get("REDIS_URL")
 
+        if not self._is_redis_reachable(redis_url, host, port):
+            print("Warning: Redis is not reachable. Falling back to in-memory cache.")
+            self.redis_client = None
+            return
+
         try:
             if redis_url:
                 self.redis_client = redis.from_url(
@@ -39,6 +44,33 @@ class RedisManager:
         except (redis.ConnectionError, redis.TimeoutError):
             print(f"Warning: Redis is not reachable. Falling back to in-memory cache.")
             self.redis_client = None
+
+    def _is_redis_reachable(self, redis_url: str | None, host: str, port: int) -> bool:
+        """
+        Quickly check if the Redis port is listening using a basic socket connection
+        to avoid library-specific blocking hangs during DNS resolution or connect.
+        """
+        import socket
+        from urllib.parse import urlparse
+
+        target_host = host
+        target_port = port
+
+        if redis_url:
+            try:
+                parsed = urlparse(redis_url)
+                target_host = parsed.hostname or host
+                target_port = parsed.port or port
+            except Exception:
+                pass
+
+        try:
+            # Use a quick 1.0 second connection timeout to see if port is open
+            s = socket.create_connection((target_host, target_port), timeout=1.0)
+            s.close()
+            return True
+        except Exception:
+            return False
 
     def get_cached_result(self, file_hash: str) -> dict | None:
         """

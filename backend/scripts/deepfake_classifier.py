@@ -3,42 +3,126 @@ import hashlib
 import numpy as np
 import cv2
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image
 
-try:
-    from transformers import AutoImageProcessor, AutoModelForImageClassification
-    HAS_TRANSFORMERS = True
-except ImportError:
-    HAS_TRANSFORMERS = False
+# Force PyTorch to use the local sample directory instead of C Drive cache
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.environ['TORCH_HOME'] = os.path.join(base_dir, "..", "sample")
+from torchvision import transforms, models
+
+class VideoDeepfakeModel(nn.Module):
+    def __init__(self, num_classes=2, latent_dim=2048, lstm_layers=1, hidden_dim=2048):
+        super(VideoDeepfakeModel, self).__init__()
+        base_model = models.resnext50_32x4d(pretrained=False)
+        self.cnn = nn.Sequential(*list(base_model.children())[:-2])
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.lstm = nn.LSTM(latent_dim, hidden_dim, lstm_layers, batch_first=True)
+        self.dp = nn.Dropout(0.4)
+        self.fc = nn.Linear(hidden_dim, num_classes)
+
+    def forward(self, x):
+        batch_size, seq_length, c, h, w = x.shape
+        x = x.view(batch_size * seq_length, c, h, w)
+        fmap = self.cnn(x)
+        x = self.avgpool(fmap)
+        x = x.view(batch_size, seq_length, 2048)
+        lstm_out, _ = self.lstm(x)
+        out = torch.mean(lstm_out, dim=1)
+        out = self.dp(self.fc(out))
+        return out
 
 class DeepfakeClassifier:
     """
     Classifies face crops as Real or Fake using:
-    1. A fine-tuned Vision Transformer (ViT) model from Hugging Face (deep learning layer).
+    1. A custom trained ResNet18 model (deep learning layer).
     2. Image forensics (pixel-level heuristic analysis of blur, frequency domain anomalies, and color distribution).
     """
-    def __init__(self, model_name: str = "Wvolf/ViT_Deepfake_Detection", use_gpu: bool = True):
+    def __init__(self, model_name: str = "IMG_MODEL", use_gpu: bool = True):
         self.device = torch.device("cuda" if (use_gpu and torch.cuda.is_available()) else "cpu")
         self.model_name = model_name
         self.model = None
-        self.processor = None
         self.model_loaded = False
         
-        if HAS_TRANSFORMERS:
-            try:
-                print(f"Attempting to load ViT Deepfake model '{model_name}' on {self.device}...")
-                self.processor = AutoImageProcessor.from_pretrained(model_name, trust_remote_code=True)
-                self.model = AutoModelForImageClassification.from_pretrained(model_name, trust_remote_code=True)
+        self.vid_model = None
+        self.vid_model_loaded = False
+        
+        model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", f"{model_name}.pth")
+        vid_model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "VID_MODEL.pth")
+        
+        try:
+            print(f"Attempting to load custom Image Deepfake model '{model_name}' on {self.device}...")
+            if os.path.exists(model_path):
+                self.model = models.resnext50_32x4d(pretrained=False)
+                num_ftrs = self.model.fc.in_features
+                self.model.fc = nn.Linear(num_ftrs, 2)
+                self.model.load_state_dict(torch.load(model_path, map_location=self.device))
                 self.model.to(self.device)
                 self.model.eval()
                 self.model_loaded = True
-                print("ViT model loaded successfully!")
-            except Exception as e:
-                print(f"Warning: Could not load Hugging Face ViT model: {e}")
-                print("Falling back to local heuristic forensic classification.")
-        else:
-            print("transformers library not available or import failed. Using heuristic classifier.")
+                
+                self.transform = transforms.Compose([
+                    transforms.Resize((224, 224)),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                ])
+                print("Custom image model loaded successfully!")
+            else:
+                print(f"Image Model file not found at {model_path}. Using heuristic classifier.")
+                
+            print(f"Attempting to load custom Video Sequence model 'VID_MODEL' on {self.device}...")
+            if os.path.exists(vid_model_path):
+                self.vid_model = VideoDeepfakeModel()
+                self.vid_model.load_state_dict(torch.load(vid_model_path, map_location=self.device))
+                self.vid_model.to(self.device)
+                self.vid_model.eval()
+                self.vid_model_loaded = True
+                print("Custom video sequence model loaded successfully!")
+                
+        except Exception as e:
+            print(f"Warning: Could not load custom models: {e}")
+            print("Falling back to local heuristic forensic classification.")
+
+    def analyze_video_sequence(self, frames_list) -> float:
+        """
+        Takes a list of raw RGB numpy frames (full frames),
+        normalizes them, and runs them through the sequence model (VID_MODEL).
+        Returns a deepfake probability score (0.0 to 1.0).
+        """
+        if not self.vid_model_loaded or not frames_list:
+            return None
+            
+        try:
+            # Subsample or pad to exactly 15 frames for the sequence model
+            seq_length = 15
+            processed_frames = []
+            
+            total = len(frames_list)
+            step = max(1, total // seq_length) if total >= seq_length else 1
+            
+            for i in range(0, total, step):
+                if len(processed_frames) >= seq_length: break
+                pil_img = Image.fromarray(frames_list[i]).convert("RGB")
+                tensor_img = self.transform(pil_img)
+                processed_frames.append(tensor_img)
+                
+            while len(processed_frames) < seq_length:
+                if len(processed_frames) > 0:
+                    processed_frames.append(processed_frames[-1].clone())
+                else:
+                    processed_frames.append(torch.zeros(3, 224, 224))
+            
+            input_tensor = torch.stack(processed_frames).unsqueeze(0).to(self.device) # Shape: (1, 15, 3, 224, 224)
+            
+            with torch.no_grad():
+                outputs = self.vid_model(input_tensor)
+                probs = F.softmax(outputs, dim=1).cpu().numpy()[0]
+                
+            return float(probs[1]) # Prob of Fake
+        except Exception as e:
+            print(f"Error during video sequence model inference: {e}")
+            return None
 
     def analyze_face(self, face_rgb: np.ndarray) -> dict:
         """
@@ -54,33 +138,24 @@ class DeepfakeClassifier:
         # Determine fake score
         deep_learning_score = None
         
-        # 2. Run ViT Deep Learning Model if loaded
-        if self.model_loaded and self.model is not None and self.processor is not None:
+        # 2. Run Custom Deep Learning Model if loaded
+        if self.model_loaded and self.model is not None:
             try:
                 # Convert np array to PIL Image
-                pil_img = Image.fromarray(face_rgb)
-                inputs = self.processor(images=pil_img, return_tensors="pt").to(self.device)
+                pil_img = Image.fromarray(face_rgb).convert("RGB")
+                inputs = self.transform(pil_img).unsqueeze(0).to(self.device)
                 
                 with torch.no_grad():
-                    outputs = self.model(**inputs)
-                    logits = outputs.logits
-                    probs = F.softmax(logits, dim=-1).cpu().numpy()[0]
+                    outputs = self.model(inputs)
+                    probs = F.softmax(outputs, dim=1).cpu().numpy()[0]
                 
-                # Check label names to map classes correctly
-                # Wvolf/ViT_Deepfake_Detection has label mapping (0: real, 1: fake)
-                labels = self.model.config.id2label
-                fake_idx = 1
-                for idx, label in labels.items():
-                    if "fake" in label.lower() or "synthetic" in label.lower():
-                        fake_idx = idx
-                        break
-                
-                deep_learning_score = float(probs[fake_idx])
+                # ResNet trained with 0=Real, 1=Fake
+                deep_learning_score = float(probs[1])
             except Exception as e:
-                print(f"Error during ViT inference: {e}. Using heuristics instead.")
+                print(f"Error during custom model inference: {e}. Using heuristics instead.")
 
         # 3. Combine scores or use heuristic fallback
-        # If ViT did not run, we build a score from our forensics + stable hash seed
+        # If custom model did not run, we build a score from our forensics + stable hash seed
         if deep_learning_score is None:
             # We construct a stable base score using the face crop content hash
             # so that consecutive frames of the same video yield consistent scores
