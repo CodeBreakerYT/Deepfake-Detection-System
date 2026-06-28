@@ -4,10 +4,24 @@ __pycache__/
 temp_uploads/
 deepshield_history.json
 
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Dependency directories
+node_modules/
+
 # Reference/sample projects, not part of the app itself
 sample/
+backend/datasets/
+backend/models/*_checkpoint.pth
 
-# PyInstaller build artifacts (large; regenerate with: pyinstaller desktop_app.spec --distpath export --workpath build_temp)
+# PyInstaller build artifacts
 build_temp/
 export/
 hf_cache/
+
+# Local workspace scratch
+scratch/
+
