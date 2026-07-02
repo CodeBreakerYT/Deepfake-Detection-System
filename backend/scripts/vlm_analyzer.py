@@ -9,7 +9,7 @@ class VLMAnalyzer:
         self.enabled = bool(self.api_key)
         if self.enabled:
             genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-1.5-flash', generation_config={"response_mime_type": "application/json"})
+            self.model = genai.GenerativeModel('gemini-2.5-flash', generation_config={"response_mime_type": "application/json"})
         else:
             print("VLMAnalyzer disabled: GEMINI_API_KEY not found in .env")
 
