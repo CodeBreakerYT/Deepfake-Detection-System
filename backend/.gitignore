@@ -1,0 +1,16 @@
+venv/
+__pycache__/
+*.pyc
+
+# Secrets — never commit
+.env
+.env.local
+.env.*.local
+
+temp_uploads/
+hf_cache/
+datasets/
+models/
+*.pth
+deepshield_history.json
+lens_output.html
