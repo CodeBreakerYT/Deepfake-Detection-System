@@ -5,10 +5,13 @@ firebase-admin
 gunicorn
 torch
 torchvision
-opencv-python-headless
+opencv-python-headless<5
 transformers
 timm
 numpy<2.5
 pillow
 librosa
 soundfile
+google-generativeai
+SpeechRecognition
+requests
