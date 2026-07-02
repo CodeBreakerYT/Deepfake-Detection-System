@@ -45,6 +45,37 @@ export default function VoicePage() {
 
       {status === 'completed' && result && (
         <>
+          <div className="glass-panel" style={{ padding: '1rem', marginBottom: '2rem', textAlign: 'center' }}>
+            <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+              <Mic size={18} color="var(--primary)" /> Audio Playback & Analysis
+            </h3>
+            {file && (
+              <audio 
+                src={URL.createObjectURL(file)} 
+                controls 
+                style={{ width: '100%', maxWidth: '600px', marginBottom: '1rem' }} 
+              />
+            )}
+            <div style={{ textAlign: 'left', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', fontSize: '0.9rem' }}>
+              <h4 style={{ marginBottom: '0.5rem', color: 'var(--primary)' }}>Transcription</h4>
+              <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', marginBottom: '1rem' }}>
+                "{result.transcript || 'No speech detected or transcription unavailable.'}"
+              </p>
+              <h4 style={{ marginBottom: '0.5rem', color: '#ef4444' }}>Deepfake Timestamps (Fake Audio Detected)</h4>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, color: 'var(--text-secondary)' }}>
+                {result.segments?.filter(s => s.is_fake).length > 0 ? (
+                  result.segments.filter(s => s.is_fake).map((s, idx) => (
+                    <li key={idx} style={{ marginBottom: '0.25rem' }}>
+                      <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{s.start_time}s - {s.end_time}s</span> (Score: {formatPct(s.fake_score)}%)
+                    </li>
+                  ))
+                ) : (
+                  <li>No synthetic or cloned audio segments detected.</li>
+                )}
+              </ul>
+            </div>
+          </div>
+
           <ResultGauge
             result={{
               ...result,

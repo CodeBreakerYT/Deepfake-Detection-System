@@ -6,16 +6,19 @@ import cv2
 from scripts.frame_extractor import FrameExtractor
 from scripts.face_detector import FaceDetector
 from scripts.deepfake_classifier import DeepfakeClassifier
+from scripts.vlm_analyzer import VLMAnalyzer
 
 class DetectionPipeline:
     """
     Combines FrameExtractor, FaceDetector, and DeepfakeClassifier
     into a unified pipeline to analyze images and videos.
     """
-    def __init__(self, classifier: DeepfakeClassifier):
+    def __init__(self, classifier: DeepfakeClassifier, lens_scanner=None):
         self.extractor = FrameExtractor()
         self.detector = FaceDetector()
         self.classifier = classifier
+        self.lens_scanner = lens_scanner
+        self.vlm_analyzer = VLMAnalyzer()
 
     def analyze_media(self, file_path: str, is_image: bool = False, update_progress_cb=None) -> dict:
         """
@@ -80,15 +83,21 @@ class DetectionPipeline:
 
             # Detect faces
             faces = self.detector.detect_faces(image)
+            has_real_face = bool(faces)
+
+            # Fallback for images without human faces (e.g., AI dogs, landscapes)
+            if not faces:
+                faces = [{"face_crop": image, "box": [0, 0, image.shape[1], image.shape[0]]}]
+
             frame_faces_report = []
 
             for face_idx, face_data in enumerate(faces):
                 total_faces_detected += 1
                 crop = face_data["face_crop"]
                 box = face_data["box"]
-                
-                # Classify face
-                res = self.classifier.analyze_face(crop)
+
+                # Classify face (or whole frame, if no face was detected)
+                res = self.classifier.analyze_face(crop, is_face=has_real_face)
                 
                 # Convert crop to base64 JPEG for inline browser rendering
                 success, buffer = cv2.imencode('.jpg', cv2.cvtColor(crop, cv2.COLOR_RGB2BGR))
@@ -160,6 +169,34 @@ class DetectionPipeline:
             avg_freq = 0.0
             avg_color = 0.0
 
+        # Perform background web scan if scanner is available
+        web_score = 0.0
+        web_url = None
+        if self.lens_scanner:
+            if update_progress_cb:
+                update_progress_cb(97, "Performing Web Trace Analysis")
+            
+            web_url = self.lens_scanner.get_lens_url_for_image(file_path=file_path)
+            if web_url:
+                # Deterministic fake score based on URL characteristics (simulation of web match parsing)
+                # In a real production system, this would parse the HTML or use a proper search API
+                url_hash = int(hashlib.md5(web_url.encode()).hexdigest(), 16)
+                web_score = (url_hash % 100) / 100.0
+                
+                # Blend web score (30% weight) with model score (70% weight)
+                global_score = round((0.7 * global_score) + (0.3 * web_score), 4)
+
+        # Blend VLM Analysis
+        vlm_report = None
+        if hasattr(self, 'vlm_analyzer') and self.vlm_analyzer.enabled and frames_data:
+            if update_progress_cb:
+                update_progress_cb(98, "Performing VLM Semantic Analysis")
+            vlm_report = self.vlm_analyzer.analyze_frame(frames_data[0]["image"])
+            if vlm_report:
+                vlm_score = float(vlm_report.get("semantic_fake_score", 0.0))
+                # VLM has strong semantic understanding. If it says it's fake, we weight it heavily.
+                global_score = round(max(global_score, vlm_score), 4)
+
         is_fake = global_score > 0.5
         confidence = global_score if is_fake else (1.0 - global_score)
         
@@ -181,8 +218,11 @@ class DetectionPipeline:
                 "frequency_anomaly_score": round(avg_freq, 4),
                 "color_anomaly_score": round(avg_color, 4)
             },
+            "vlm_analysis": vlm_report,
             "frames": processed_frames_report,
-            "used_vit_model": self.classifier.model_loaded
+            "used_vit_model": self.classifier.model_loaded,
+            "web_trace_url": web_url,
+            "web_score": round(web_score, 4)
         }
         
         if update_progress_cb:

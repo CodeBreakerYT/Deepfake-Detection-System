@@ -8,7 +8,7 @@ torchvision
 opencv-python-headless
 transformers
 timm
-numpy
+numpy<2.5
 pillow
 librosa
 soundfile

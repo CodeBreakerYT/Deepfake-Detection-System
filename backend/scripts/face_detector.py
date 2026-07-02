@@ -25,8 +25,8 @@ class FaceDetector:
         faces = self.face_cascade.detectMultiScale(
             gray,
             scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(40, 40),
+            minNeighbors=8,
+            minSize=(60, 60),
             flags=cv2.CASCADE_SCALE_IMAGE
         )
 

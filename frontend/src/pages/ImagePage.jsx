@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Image as ImageIcon, Cpu, Camera } from 'lucide-react';
 import UploadZone from '../components/UploadZone';
 import ProgressPanel from '../components/ProgressPanel';
@@ -9,6 +10,7 @@ import { useDetection } from '../hooks/useDetection';
 
 export default function ImagePage() {
   const { file, status, progress, stage, result, error, processUpload, reset } = useDetection('/api/detect');
+  const [imgDims, setImgDims] = useState({ w: 1, h: 1 });
 
   const faces = result?.frames?.[0]?.faces || [];
 
@@ -41,6 +43,62 @@ export default function ImagePage() {
 
       {status === 'completed' && result && (
         <>
+          <div className="glass-panel" style={{ padding: '1rem', marginBottom: '2rem', textAlign: 'center' }}>
+            <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+              <ImageIcon size={18} color="var(--primary)" /> Media Preview & Localization
+            </h3>
+            <div style={{ position: 'relative', display: 'inline-block', width: '100%', maxWidth: '600px' }}>
+              {file && (
+                <img 
+                  src={URL.createObjectURL(file)} 
+                  alt="Preview" 
+                  onLoad={(e) => setImgDims({ w: e.target.naturalWidth, h: e.target.naturalHeight })} 
+                  style={{ width: '100%', height: 'auto', display: 'block', borderRadius: '8px' }} 
+                />
+              )}
+              {faces.map((face, idx) => {
+                const [x, y, w, h] = face.box;
+                const left = (x / imgDims.w) * 100 + '%';
+                const top = (y / imgDims.h) * 100 + '%';
+                const width = (w / imgDims.w) * 100 + '%';
+                const height = (h / imgDims.h) * 100 + '%';
+                const isFake = face.fake_score > 0.5;
+                return (
+                  <div key={`face-${idx}`} style={{ position: 'absolute', left, top, width, height, border: `3px solid ${isFake ? '#ef4444' : '#22c55e'}`, boxShadow: '0 0 10px rgba(0,0,0,0.5)', borderRadius: '4px' }}>
+                    <span style={{ position: 'absolute', top: '-28px', left: '-3px', background: isFake ? '#ef4444' : '#22c55e', color: 'white', padding: '2px 8px', fontSize: '12px', fontWeight: 'bold', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                      {isFake ? 'FAKE FACE' : 'REAL FACE'} {formatPct(face.fake_score)}%
+                    </span>
+                  </div>
+                );
+              })}
+              
+              {/* Render VLM Anomaly Regions */}
+              {result.vlm_analysis?.anomaly_regions?.map((region, idx) => {
+                const [x, y, w, h] = region.box;
+                const left = (x / imgDims.w) * 100 + '%';
+                const top = (y / imgDims.h) * 100 + '%';
+                const width = (w / imgDims.w) * 100 + '%';
+                const height = (h / imgDims.h) * 100 + '%';
+                return (
+                  <div key={`vlm-${idx}`} style={{ position: 'absolute', left, top, width, height, border: '3px solid #f59e0b', boxShadow: '0 0 10px rgba(0,0,0,0.5)', borderRadius: '4px', pointerEvents: 'none' }}>
+                    <span style={{ position: 'absolute', top: '-28px', left: '-3px', background: '#f59e0b', color: '#fff', padding: '2px 8px', fontSize: '12px', fontWeight: 'bold', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                      ⚠️ {region.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            
+            {result.vlm_analysis && (
+              <div style={{ marginTop: '1rem', textAlign: 'left', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', fontSize: '0.95rem' }}>
+                <h4 style={{ marginBottom: '0.5rem', color: 'var(--primary)' }}>Semantic & Physical Analysis</h4>
+                <p style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  {result.vlm_analysis.reasoning}
+                </p>
+              </div>
+            )}
+          </div>
+
           <ResultGauge
             result={{
               ...result,
@@ -48,6 +106,7 @@ export default function ImagePage() {
                 { label: 'Analysis Target', value: <><ImageIcon size={18} color="var(--secondary)" /> Image File</> },
                 { label: 'Processing Latency', value: `${result.processing_time_sec}s` },
                 { label: 'Faces Detected', value: result.total_faces_detected },
+                { label: 'Web Trace Anomaly Score', value: `${formatPct(result.web_score || 0)}%` },
                 { label: 'Verdict Confidence', value: `${formatPct(result.confidence)}%` },
               ],
             }}
@@ -65,6 +124,8 @@ export default function ImagePage() {
             ]}
           />
 
+
+
           {faces.length > 0 && (
             <div className="glass-panel">
               <div className="faces-title">
@@ -80,6 +141,9 @@ export default function ImagePage() {
                         {formatPct(face.fake_score)}% Fake
                       </div>
                       <div className="face-card-meta">Confidence {formatPct(face.confidence)}%</div>
+                    </div>
+                    <div className="face-card-actions" style={{ position: 'absolute', bottom: '0', left: '0', right: '0', padding: '0.5rem', background: 'rgba(0,0,0,0.8)', borderTop: '1px solid rgba(255,255,255,0.1)', transform: 'translateY(100%)', transition: 'transform 0.2s' }}>
+                       <span style={{color: 'var(--text-muted)', fontSize: '0.8rem'}}>Background Scan Active</span>
                     </div>
                   </div>
                 ))}

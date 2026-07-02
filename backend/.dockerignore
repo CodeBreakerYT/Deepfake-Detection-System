@@ -1,0 +1,15 @@
+.git
+.gitignore
+__pycache__/
+*.pyc
+.env
+.env.local
+.env.*.local
+temp_uploads/
+hf_cache/
+datasets/
+models/
+*.pth
+lens_output.html
+test_lens.py
+README.md

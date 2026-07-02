@@ -15,6 +15,7 @@ from scripts.pipeline import DetectionPipeline
 from scripts.voice_classifier import VoiceClassifier
 from scripts.voice_pipeline import VoiceDetectionPipeline
 from scripts.firebase_manager import FirebaseManager
+from scripts.google_lens_scanner import GoogleLensScanner
 
 # Setup directories
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -31,7 +32,8 @@ CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
 print("Initializing pipeline services...")
 db_manager = FirebaseManager()
 classifier = DeepfakeClassifier()
-pipeline = DetectionPipeline(classifier)
+lens_scanner = GoogleLensScanner()
+pipeline = DetectionPipeline(classifier, lens_scanner=lens_scanner)
 voice_classifier = VoiceClassifier()
 voice_pipeline = VoiceDetectionPipeline(voice_classifier)
 print("All services initialized!")
@@ -322,6 +324,37 @@ def clear_cache():
     """
     db_manager.clear_cache()
     return jsonify({"message": "Cache and task history cleared."})
+
+@app.route("/api/search-web", methods=["POST"])
+def search_web_lens():
+    """
+    Accepts an image file or a base64 string and returns the Google Lens URL.
+    """
+    data = request.get_json(silent=True)
+    base64_str = data.get("image") if data else None
+
+    # If it's a multipart form data with file
+    if "file" in request.files:
+        file = request.files["file"]
+        if file.filename != "":
+            import tempfile
+            import os
+            temp_path = os.path.join(tempfile.gettempdir(), f"lens_{uuid.uuid4().hex}.jpg")
+            file.save(temp_path)
+            url = lens_scanner.get_lens_url_for_image(file_path=temp_path)
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            if url:
+                return jsonify({"lens_url": url})
+            return jsonify({"detail": "Failed to generate Google Lens URL"}), 500
+
+    if base64_str:
+        url = lens_scanner.get_lens_url_for_image(base64_str=base64_str)
+        if url:
+            return jsonify({"lens_url": url})
+        return jsonify({"detail": "Failed to generate Google Lens URL"}), 500
+
+    return jsonify({"detail": "No file or base64 image provided"}), 400
 
 def time_tracker_helper():
     import time

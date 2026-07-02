@@ -1,21 +1,26 @@
 # DeepShield — Deepfake Detection System
 
-Detects deepfakes in images, video, and voice audio. FastAPI backend (PyTorch ViT model + OpenCV/FFT forensics for images/video, Wav2Vec2 model + acoustic forensics for voice) with a React frontend. No login required.
+Detects AI-generated/deepfake content in images, video, and voice audio. Flask
+backend (an ensemble of pretrained transformer models — face-forgery ViT +
+general AI-image Swin detector for images/video, Wav2Vec2 for voice — blended
+with classical pixel/acoustic forensics) with a React frontend. No login
+required.
 
 ## Local development
 
-**Backend** (from repo root):
+**Backend** (from `backend/`):
 ```
 python -m venv venv
 venv\Scripts\activate          # Windows
 pip install -r requirements.txt
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python app.py
 ```
-First run downloads two Hugging Face models (~350MB ViT + ~1.2GB Wav2Vec2). If the voice model fails to download, the app automatically falls back to a heuristic-only acoustic classifier — it still works, just less accurately for voice.
+Runs on `http://localhost:8000`. First run downloads three Hugging Face
+models (~1.6GB total: two image detectors + one audio detector) into
+`backend/hf_cache/`; cached after that.
 
-**Frontend**:
+**Frontend** (from `frontend/`):
 ```
-cd frontend
 npm install
 npm run dev
 ```
@@ -23,25 +28,57 @@ Open `http://localhost:5173`.
 
 ## Deploying
 
-The backend (PyTorch, transformers, OpenCV, librosa, background task polling) is too heavy and stateful for Vercel's serverless functions, so the deployment is split:
+The backend (PyTorch, transformers, OpenCV, librosa, background task
+threads, multi-GB model weights) needs a persistent container, not a
+serverless function, so the deployment is split:
 
-- **Frontend → Vercel**
-- **Backend → Render** (or Railway — anything that runs a persistent Python process)
+- **Frontend → Netlify**
+- **Backend → Hugging Face Spaces** (Docker SDK)
 
-### Backend on Render
+### Backend on Hugging Face Spaces
 
-1. Push this repo to GitHub, connect it on [render.com](https://render.com).
-2. Render will detect `render.yaml` and provision a Python web service automatically (Blueprint deploy), or set up manually:
-   - Build command: `pip install -r requirements.txt`
-   - Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-3. Set the `FRONTEND_ORIGINS` env var to your Vercel URL once you have it (comma-separated if multiple), e.g. `https://deepshield.vercel.app`.
-4. Optional: add a Render Redis instance and set `REDIS_URL` on the web service for persistent result caching across restarts (without it, caching falls back to in-memory and resets on redeploy/restart).
-5. **RAM**: Render's free tier (512MB) is tight for PyTorch + two loaded models — if you hit OOM/crashes, upgrade to at least the Starter plan.
-6. Free-tier services spin down when idle and re-download the HF models on the next request — first request after idling will be slow.
+1. Create a new Space at [huggingface.co/new-space](https://huggingface.co/new-space):
+   SDK = **Docker**, visibility = your choice.
+2. Push the contents of `backend/` to the Space's git repo root (the Space
+   *is* a git repo — its own remote, separate from GitHub):
+   ```
+   cd backend
+   git init
+   git remote add space https://huggingface.co/spaces/<your-username>/<space-name>
+   git add -A
+   git commit -m "Deploy backend"
+   git push space main
+   ```
+   (If `backend/` is already tracked inside this repo's git history and you'd
+   rather push directly from the monorepo, use `git subtree push --prefix
+   backend space main` from the repo root instead.)
+3. The Space's `Dockerfile` pre-downloads all three models at build time, so
+   the first build takes a while (large image) but cold starts afterward
+   don't re-download anything.
+4. In the Space's **Settings → Variables and secrets**, set:
+   - `FRONTEND_ORIGINS` — your Netlify URL, e.g. `https://deepshield.netlify.app`
+     (comma-separated if multiple; defaults to `*` if unset).
+   - `HF_TOKEN` *(optional)* — avoids anonymous Hugging Face Hub rate limits.
+   - `FIREBASE_CREDENTIALS_JSON` *(optional)* — raw JSON of a Firebase service
+     account for persistent history/caching (otherwise falls back to in-memory,
+     which resets whenever the Space restarts/sleeps).
+5. Your API base URL will be `https://<your-username>-<space-name>.hf.space`.
+6. **Free tier**: CPU Basic (16GB RAM) comfortably fits all three models.
+   Spaces sleep after inactivity — the first request after waking takes a
+   few extra seconds to reload the models into memory (not re-download,
+   since they're baked into the image).
 
-### Frontend on Vercel
+### Frontend on Netlify
 
-1. Import the repo on [vercel.com](https://vercel.com), set **Root Directory** to `frontend`.
-2. Build command `npm run build`, output directory `dist` (Vercel autodetects this for Vite).
-3. Set environment variable `VITE_API_BASE` to your Render backend URL, e.g. `https://deepshield-backend.onrender.com`.
-4. `frontend/vercel.json` is already configured to rewrite all routes to `index.html` so client-side routing (`/image`, `/video`, `/voices`, `/about`) works on direct navigation/refresh.
+1. Import the repo at [app.netlify.com](https://app.netlify.com/start), set
+   **Base directory** to `frontend`.
+2. Build command `npm run build`, publish directory `frontend/dist`
+   (already configured in `frontend/netlify.toml`).
+3. Set environment variable `VITE_API_BASE` to your Space URL from above,
+   e.g. `https://your-username-deepshield-backend.hf.space`.
+4. `frontend/netlify.toml` already rewrites all routes to `index.html` so
+   client-side routing (`/image`, `/video`, `/voices`, `/about`) works on
+   direct navigation/refresh.
+5. Firebase config is optional client-side (falls back to a baked-in demo
+   project) — set `VITE_FIREBASE_*` env vars if you want to point at your
+   own Firestore project instead.

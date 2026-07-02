@@ -1,68 +1,55 @@
 import os
-import hashlib
 import numpy as np
-
-# Numba/Librosa compatibility patch for NumPy 2.5
-import builtins
-np.__version__ = "2.0.0" 
-
 import librosa
 import torch
-import torch.nn as nn
-from torchvision import models, transforms
-from PIL import Image
+import torch.nn.functional as F
 
-# Force PyTorch to use the local sample directory instead of C Drive cache
+# Keep HF model downloads inside the repo instead of polluting the user's C: drive cache
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-os.environ['TORCH_HOME'] = os.path.join(base_dir, "..", "sample")
+os.environ.setdefault("HF_HOME", os.path.join(base_dir, "..", "hf_cache"))
 
-class AudioSpectrogramCNN(nn.Module):
-    def __init__(self, num_classes=2):
-        super(AudioSpectrogramCNN, self).__init__()
-        self.cnn = models.resnet18(pretrained=False)
-        self.cnn.conv1 = nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-        num_ftrs = self.cnn.fc.in_features
-        self.cnn.fc = nn.Linear(num_ftrs, num_classes)
+from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 
-    def forward(self, x):
-        return self.cnn(x)
+# Wav2Vec2-based voice deepfake/spoof detector, trained on real vs AI-cloned
+# speech (ElevenLabs, Amazon Polly, Kokoro, Hume AI, Speechify, Luvvoice, etc.)
+AUDIO_MODEL_ID = "garystafford/wav2vec2-deepfake-voice-detector"
+
 
 class VoiceClassifier:
     """
     Classifies audio segments as Real or AI-generated (fake) using:
-    1. A custom trained AudioSpectrogramCNN (ResNet18-based).
-    2. Acoustic forensics (pitch jitter, spectral flatness, and silence/energy anomalies).
+    1. A pretrained Wav2Vec2-based voice deepfake/spoof detector.
+    2. Acoustic forensics (pitch jitter, spectral flatness, and silence/energy anomalies)
+       used as a fallback if the model fails to load.
     """
     SAMPLE_RATE = 16000
 
-    def __init__(self, model_name: str = "AUD_MODEL", use_gpu: bool = True):
+    def __init__(self, use_gpu: bool = True):
         self.device = torch.device("cuda" if (use_gpu and torch.cuda.is_available()) else "cpu")
-        self.model_name = model_name
         self.model = None
+        self.feature_extractor = None
+        self.fake_idx = 1
         self.model_loaded = False
-        
-        model_path = os.path.join(base_dir, "models", f"{model_name}.pth")
-        
+
         try:
-            print(f"Attempting to load custom Audio Deepfake model '{model_name}' on {self.device}...")
-            if os.path.exists(model_path):
-                self.model = AudioSpectrogramCNN()
-                self.model.load_state_dict(torch.load(model_path, map_location=self.device))
-                self.model.to(self.device)
-                self.model.eval()
-                self.model_loaded = True
-                
-                self.transform = transforms.Compose([
-                    transforms.Resize((224, 224)),
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=[0.5], std=[0.5])
-                ])
-                print("Custom Audio model loaded successfully!")
-            else:
-                print(f"Model file not found at {model_path}. Using heuristic classifier.")
+            print(f"Loading voice deepfake model '{AUDIO_MODEL_ID}' on {self.device}...")
+            self.feature_extractor = AutoFeatureExtractor.from_pretrained(AUDIO_MODEL_ID)
+            self.model = AutoModelForAudioClassification.from_pretrained(AUDIO_MODEL_ID)
+            self.model.to(self.device).eval()
+            self.fake_idx = self._find_fake_index(self.model.config.id2label)
+            self.model_loaded = True
+            print("Voice deepfake model loaded successfully!")
         except Exception as e:
-            print(f"Warning: Could not load custom audio model: {e}")
-            print("Falling back to local heuristic forensic classification.")
+            print(f"Warning: could not load voice deepfake model: {e}")
+            print("Falling back to local heuristic acoustic forensic classification.")
+
+    @staticmethod
+    def _find_fake_index(id2label: dict) -> int:
+        for idx, label in id2label.items():
+            l = str(label).lower()
+            if any(k in l for k in ("fake", "synthetic", "spoof", "generated", "artificial")):
+                return int(idx)
+        return 1
 
     def analyze_segment(self, audio_segment: np.ndarray) -> dict:
         """
@@ -78,35 +65,26 @@ class VoiceClassifier:
 
         if self.model_loaded and self.model is not None:
             try:
-                # Convert segment to Mel Spectrogram
-                mel_spec = librosa.feature.melspectrogram(y=audio_segment, sr=self.SAMPLE_RATE, n_mels=128, fmax=8000)
-                mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
-                mel_spec_db = mel_spec_db - mel_spec_db.min()
-                mel_spec_db = mel_spec_db / (mel_spec_db.max() + 1e-8) * 255.0
-                
-                img = Image.fromarray(mel_spec_db.astype(np.uint8))
-                input_tensor = self.transform(img).unsqueeze(0).to(self.device)
-                
+                inputs = self.feature_extractor(
+                    audio_segment, sampling_rate=self.SAMPLE_RATE, return_tensors="pt", padding=True
+                )
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
                 with torch.no_grad():
-                    outputs = self.model(input_tensor)
-                    probs = torch.nn.functional.softmax(outputs, dim=-1).cpu().numpy()[0]
-                
-                # Assume class 1 is Fake, class 0 is Real
-                deep_learning_score = float(probs[1])
+                    outputs = self.model(**inputs)
+                    probs = F.softmax(outputs.logits, dim=-1).cpu().numpy()[0]
+
+                deep_learning_score = float(probs[self.fake_idx])
             except Exception as e:
-                print(f"Error during audio model inference: {e}. Using heuristics instead.")
+                print(f"Error during voice deepfake model inference: {e}. Using heuristics instead.")
 
         if deep_learning_score is None:
-            hasher = hashlib.md5(audio_segment.tobytes())
-            hash_val = int(hasher.hexdigest(), 16)
-            stable_seed = (hash_val % 100) / 100.0
-
-            heuristic_comb = (
+            # No deep model available: fall back to pure acoustic heuristics (no randomness).
+            deep_learning_score = (
                 0.4 * heuristics["pitch_jitter_score"] +
                 0.35 * heuristics["spectral_flatness_score"] +
                 0.25 * heuristics["silence_anomaly_score"]
             )
-            deep_learning_score = 0.6 * heuristic_comb + 0.4 * stable_seed
 
         fake_score = round(float(deep_learning_score), 4)
         is_fake = fake_score > 0.5

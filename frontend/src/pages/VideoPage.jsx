@@ -58,6 +58,21 @@ export default function VideoPage() {
 
       {status === 'completed' && result && (
         <>
+          <div className="glass-panel" style={{ padding: '1rem', marginBottom: '2rem', textAlign: 'center' }}>
+            <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+              <Video size={18} color="var(--primary)" /> Video Playback Preview
+            </h3>
+            <div style={{ position: 'relative', display: 'inline-block', width: '100%', maxWidth: '600px' }}>
+              {file && (
+                <video 
+                  src={URL.createObjectURL(file)} 
+                  controls
+                  style={{ width: '100%', height: 'auto', display: 'block', borderRadius: '8px', border: '1px solid var(--border)' }} 
+                />
+              )}
+            </div>
+          </div>
+
           <ResultGauge
             result={{
               ...result,
@@ -66,6 +81,7 @@ export default function VideoPage() {
                 { label: 'Processing Latency', value: `${result.processing_time_sec}s` },
                 { label: 'Sampled Frames', value: result.total_frames_analyzed },
                 { label: 'Total Faces Detected', value: result.total_faces_detected },
+                { label: 'Web Trace Anomaly Score', value: `${formatPct(result.web_score || 0)}%` },
               ],
             }}
             icon={<Cpu size={14} />}
@@ -114,7 +130,7 @@ export default function VideoPage() {
                             <div className={`face-card-score ${face.fake_score > 0.5 ? 'danger' : 'safe'}`}>
                               {formatPct(face.fake_score)}% Fake
                             </div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Confidence: {formatPct(face.confidence)}%</div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Confidence: {formatPct(face.confidence)}%</div>
                           </div>
                         </div>
                       ))}
@@ -142,7 +158,7 @@ export default function VideoPage() {
                         <span>Color Depth Val:</span>
                         <span style={{ color: '#fff', fontWeight: 500 }}>{currentFrame.faces[0].heuristics.color_depth_val}</span>
                       </div>
-                    </div>
+                      </div>
                   ) : (
                     <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem', fontSize: '0.8rem' }}>
                       No frame metrics available.

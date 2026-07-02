@@ -203,3 +203,36 @@ export async function clearAllHistory() {
     console.error("Failed to clear backend cache:", err);
   }
 }
+
+export async function searchWebForMatches(fileOrBase64) {
+  try {
+    let res;
+    if (fileOrBase64 instanceof File || fileOrBase64 instanceof Blob) {
+      const formData = new FormData();
+      formData.append("file", fileOrBase64);
+      res = await fetch(`${API_BASE}/api/search-web`, {
+        method: "POST",
+        body: formData,
+      });
+    } else if (typeof fileOrBase64 === "string") {
+      res = await fetch(`${API_BASE}/api/search-web`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: fileOrBase64 }),
+      });
+    } else {
+      throw new Error("Invalid input for web search");
+    }
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || "Failed to search web");
+    }
+
+    const data = await res.json();
+    return data.lens_url;
+  } catch (err) {
+    console.error("Error searching web:", err);
+    throw err;
+  }
+}

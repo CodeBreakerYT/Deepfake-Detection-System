@@ -2,6 +2,9 @@ import time
 import hashlib
 import numpy as np
 import librosa
+import speech_recognition as sr
+import soundfile as sf
+import io
 from scripts.voice_classifier import VoiceClassifier
 
 class VoiceDetectionPipeline:
@@ -26,13 +29,13 @@ class VoiceDetectionPipeline:
         if update_progress_cb:
             update_progress_cb(10, "Loading Audio")
 
-        y, sr = librosa.load(file_path, sr=self.SAMPLE_RATE, mono=True)
-        duration = float(len(y) / sr) if sr else 0.0
+        y, sample_rate = librosa.load(file_path, sr=self.SAMPLE_RATE, mono=True)
+        duration = float(len(y) / sample_rate) if sample_rate else 0.0
 
         if update_progress_cb:
             update_progress_cb(25, "Segmenting Audio")
 
-        segments = self._segment_audio(y, sr)
+        segments = self._segment_audio(y, sample_rate)
         total_segments = len(segments)
 
         processed_segments = []
@@ -56,7 +59,7 @@ class VoiceDetectionPipeline:
             processed_segments.append({
                 "segment_idx": idx,
                 "start_time": round(seg_start, 2),
-                "end_time": round(seg_start + len(seg_audio) / sr, 2),
+                "end_time": round(seg_start + len(seg_audio) / sample_rate, 2),
                 "fake_score": res["fake_score"],
                 "is_fake": res["is_fake"],
                 "confidence": res["confidence"],
@@ -76,6 +79,22 @@ class VoiceDetectionPipeline:
         else:
             global_score = 0.0
             avg_jitter = avg_flatness = avg_silence = 0.0
+
+        if update_progress_cb:
+            update_progress_cb(97, "Transcribing Audio")
+
+        transcript = ""
+        try:
+            r = sr.Recognizer()
+            wav_io = io.BytesIO()
+            sf.write(wav_io, y, sample_rate, format='WAV', subtype='PCM_16')
+            wav_io.seek(0)
+            with sr.AudioFile(wav_io) as source:
+                audio_data = r.record(source)
+                transcript = r.recognize_google(audio_data)
+        except Exception as e:
+            transcript = "[Transcription unavailable or no speech detected]"
+            print(f"Transcription error: {e}")
 
         is_fake = global_score > 0.5
         confidence = global_score if is_fake else (1.0 - global_score)
@@ -98,7 +117,8 @@ class VoiceDetectionPipeline:
                 "silence_anomaly_score": round(avg_silence, 4)
             },
             "segments": processed_segments,
-            "used_voice_model": self.classifier.model_loaded
+            "used_voice_model": self.classifier.model_loaded,
+            "transcript": transcript
         }
 
         if update_progress_cb:
