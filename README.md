@@ -82,3 +82,30 @@ serverless function, so the deployment is split:
 5. Firebase config is optional client-side (falls back to a baked-in demo
    project) — set `VITE_FIREBASE_*` env vars if you want to point at your
    own Firestore project instead.
+
+### Datasets used
+Deepfake detection
+
+Image Datasets used:
+1. https://www.kaggle.com/datasets/manjilkarki/deepfake-and-real-images
+2. https://www.kaggle.com/datasets/saurabhbagchi/deepfake-image-detection
+3. https://www.kaggle.com/competitions/deepfake-detection-challenge/data
+4. https://www.kaggle.com/datasets/saurabhbagchi/deepfake-image-detection/code
+
+Video Datasets used:
+1. https://www.kaggle.com/datasets/sanikatiwarekar/deep-fake-detection-dfd-entire-original-dataset
+2. https://www.kaggle.com/datasets/unidpro/deepfake-videos-dataset
+
+Audio Datasets used:
+1. https://www.kaggle.com/datasets/adarshsingh0903/audio-deepfake-detection-dataset
+2. https://www.kaggle.com/datasets/mohammedabdeldayem/the-fake-or-real-dataset
+3. https://www.kaggle.com/datasets/unidpro/real-vs-fake-human-voice-deepfake-audio
+4. https://www.kaggle.com/datasets/birdy654/deep-voice-deepfake-voice-recognition
+5. https://www.kaggle.com/datasets/naman3007/hav-df-dataset
+
+
+Train models:
+python backend/scripts/train_image_model.py
+python backend/scripts/train_video_model.py
+python backend/scripts/train_audio_model.py
+
