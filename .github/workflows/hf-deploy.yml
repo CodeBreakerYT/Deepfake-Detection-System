@@ -1,0 +1,40 @@
+name: Deploy backend to Hugging Face Spaces
+
+on:
+  push:
+    branches: ["main"]
+    # Only trigger if files in the backend/ folder change
+    paths:
+      - 'backend/**'
+  workflow_dispatch:
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to Hugging Face Hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: ${{ secrets.HF_SPACE }}
+        run: |
+          if [ -z "$HF_TOKEN" ] || [ -z "$HF_SPACE" ]; then
+            echo "Error: HF_TOKEN or HF_SPACE secret is missing."
+            echo "Please add them in your repository settings: Settings -> Secrets and variables -> Actions"
+            echo "HF_TOKEN: Your Hugging Face access token (with write permissions)"
+            echo "HF_SPACE: Your Space name (e.g., CodeBreakerYT/DeepShield-Backend)"
+            exit 1
+          fi
+          
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          
+          # Add the Hugging Face Space as a remote
+          git remote add space https://user:$HF_TOKEN@huggingface.co/spaces/$HF_SPACE
+          
+          # Push only the 'backend' folder to the root of the Hugging Face Space
+          git subtree push --prefix backend space main
