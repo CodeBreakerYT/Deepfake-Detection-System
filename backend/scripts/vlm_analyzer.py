@@ -1,5 +1,6 @@
 import os
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from PIL import Image
 import json
 
@@ -8,8 +9,7 @@ class VLMAnalyzer:
         self.api_key = os.getenv("GEMINI_API_KEY")
         self.enabled = bool(self.api_key)
         if self.enabled:
-            genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-2.5-flash', generation_config={"response_mime_type": "application/json"})
+            self.client = genai.Client(api_key=self.api_key)
         else:
             print("VLMAnalyzer disabled: GEMINI_API_KEY not found in .env")
 
@@ -38,7 +38,13 @@ Return a JSON strictly following this schema:
   ]
 }}
 """
-            response = self.model.generate_content([prompt, pil_img])
+            response = self.client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[prompt, pil_img],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                ),
+            )
             
             text = response.text
             if "```json" in text:

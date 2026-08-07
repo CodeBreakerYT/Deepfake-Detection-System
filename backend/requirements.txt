@@ -12,6 +12,6 @@ numpy<2.5
 pillow
 librosa
 soundfile
-google-generativeai
+google-genai
 SpeechRecognition
 requests

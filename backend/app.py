@@ -28,15 +28,33 @@ app = Flask(__name__)
 allowed_origins = os.environ.get("FRONTEND_ORIGINS", "*").split(",")
 CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
 
-# Initialize components
-print("Initializing pipeline services...")
+# Initialize fast components
+print("Initializing fast pipeline services...")
 db_manager = FirebaseManager()
-classifier = DeepfakeClassifier()
-lens_scanner = GoogleLensScanner()
-pipeline = DetectionPipeline(classifier, lens_scanner=lens_scanner)
-voice_classifier = VoiceClassifier()
-voice_pipeline = VoiceDetectionPipeline(voice_classifier)
-print("All services initialized!")
+
+# Global placeholders for heavy models
+classifier = None
+lens_scanner = None
+pipeline = None
+voice_classifier = None
+voice_pipeline = None
+models_loaded = False
+
+def load_models_bg():
+    global classifier, lens_scanner, pipeline, voice_classifier, voice_pipeline, models_loaded
+    try:
+        print("Initializing heavy ML models in background...")
+        classifier = DeepfakeClassifier()
+        lens_scanner = GoogleLensScanner()
+        pipeline = DetectionPipeline(classifier, lens_scanner=lens_scanner)
+        voice_classifier = VoiceClassifier()
+        voice_pipeline = VoiceDetectionPipeline(voice_classifier)
+        models_loaded = True
+        print("All ML models initialized successfully!")
+    except Exception as e:
+        print(f"Error initializing models: {e}")
+
+threading.Thread(target=load_models_bg, daemon=True).start()
 
 def get_file_hash_from_stream(stream) -> str:
     """
@@ -163,6 +181,9 @@ def detect_voice_deepfake():
     if not is_audio:
         return jsonify({"detail": "Unsupported file format. Please upload an audio file (wav, mp3, flac, ogg, m4a, aac)."}), 400
 
+    if not models_loaded:
+        return jsonify({"detail": "Models are still warming up. Please try again in a few moments."}), 503
+
     try:
         file_hash = get_file_hash_from_stream(file.stream)
     except Exception as e:
@@ -220,6 +241,9 @@ def detect_deepfake():
 
     if not is_image and not is_video:
         return jsonify({"detail": "Unsupported file format. Please upload an image or video."}), 400
+
+    if not models_loaded:
+        return jsonify({"detail": "Models are still warming up. Please try again in a few moments."}), 503
 
     try:
         file_hash = get_file_hash_from_stream(file.stream)
@@ -332,6 +356,9 @@ def search_web_lens():
     """
     data = request.get_json(silent=True)
     base64_str = data.get("image") if data else None
+
+    if not models_loaded:
+        return jsonify({"detail": "Models are still warming up. Please try again in a few moments."}), 503
 
     # If it's a multipart form data with file
     if "file" in request.files:
