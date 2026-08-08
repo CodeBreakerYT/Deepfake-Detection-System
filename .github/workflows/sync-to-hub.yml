@@ -20,4 +20,7 @@ jobs:
           # e.g. CodeBreakerYT/Deepfake-Detection-System
           HF_SPACE: 'PikachuEX/aideepfake'
         run: |
-          git push https://CodeBreakerYT:$HF_TOKEN@huggingface.co/spaces/$HF_SPACE main
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          git subtree split --prefix backend -b deploy
+          git push https://CodeBreakerYT:$HF_TOKEN@huggingface.co/spaces/$HF_SPACE deploy:main --force
