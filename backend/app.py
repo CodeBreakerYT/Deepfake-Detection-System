@@ -40,10 +40,10 @@ voice_classifier = None
 voice_pipeline = None
 models_loaded = False
 
-def load_models_bg():
+def load_models():
     global classifier, lens_scanner, pipeline, voice_classifier, voice_pipeline, models_loaded
     try:
-        print("Initializing heavy ML models in background...")
+        print("Initializing heavy ML models...")
         classifier = DeepfakeClassifier()
         lens_scanner = GoogleLensScanner()
         pipeline = DetectionPipeline(classifier, lens_scanner=lens_scanner)
@@ -54,7 +54,8 @@ def load_models_bg():
     except Exception as e:
         print(f"Error initializing models: {e}")
 
-threading.Thread(target=load_models_bg, daemon=True).start()
+# Call synchronously to prevent PyTorch deadlocks on Windows
+load_models()
 
 def get_file_hash_from_stream(stream) -> str:
     """

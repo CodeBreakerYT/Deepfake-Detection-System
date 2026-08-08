@@ -18,7 +18,7 @@ from transformers import AutoImageProcessor, AutoModelForImageClassification
 FACE_MODEL_ID = "prithivMLmods/Deep-Fake-Detector-v2-Model"
 # General AI-image generalist: Swin fine-tuned to catch diffusion-generated imagery
 # (Midjourney/SDXL/etc.), not limited to faces. Complements the face specialist above.
-GENERAL_MODEL_ID = "Organika/sdxl-detector"
+GENERAL_MODEL_ID = None # "Organika/sdxl-detector" (Hanging on local Windows)
 
 
 class DeepfakeClassifier:

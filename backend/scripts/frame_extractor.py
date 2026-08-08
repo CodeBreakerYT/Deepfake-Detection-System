@@ -6,7 +6,7 @@ class FrameExtractor:
     """
     Extracts frames from video files at regular intervals using OpenCV.
     """
-    def __init__(self, max_frames: int = 30):
+    def __init__(self, max_frames: int = 5):
         self.max_frames = max_frames
 
     def extract_frames(self, video_path: str) -> list[dict]:

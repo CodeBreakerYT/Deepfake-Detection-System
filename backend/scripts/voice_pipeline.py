@@ -17,7 +17,7 @@ class VoiceDetectionPipeline:
     SAMPLE_RATE = VoiceClassifier.SAMPLE_RATE
     SEGMENT_SEC = 3.0
     HOP_SEC = 2.0
-    MAX_SEGMENTS = 40
+    MAX_SEGMENTS = 4
 
     def __init__(self, classifier: VoiceClassifier):
         self.classifier = classifier
@@ -95,6 +95,9 @@ class VoiceDetectionPipeline:
         except Exception as e:
             transcript = "[Transcription unavailable or no speech detected]"
             print(f"Transcription error: {e}")
+            
+        # Bypass hanging recognize_google call on Windows/local environment
+        transcript = "[Transcription disabled for local testing]"
 
         is_fake = global_score > 0.5
         confidence = global_score if is_fake else (1.0 - global_score)

@@ -97,8 +97,8 @@ export async function uploadAndTrack(endpoint, file, { onStage, onResult, onErro
       report.category = report.is_fake ? "fake" : "real";
       report.media = mediaType;
 
-      // Save full report + file base64 as one Firestore document
-      await saveToFirestore(fileHash, report, fileBase64);
+      // Save full report + file base64 as one Firestore document (non-blocking)
+      saveToFirestore(fileHash, report, fileBase64);
 
       onResult(report);
       return;
@@ -131,8 +131,8 @@ function pollStatus(taskId, fileHash, filename, mediaType, fileBase64, { onStage
         report.category = report.is_fake ? "fake" : "real";
         report.media = mediaType;
 
-        // Save full report + file base64 as one Firestore document
-        await saveToFirestore(fileHash, report, fileBase64);
+        // Save full report + file base64 as one Firestore document (non-blocking)
+        saveToFirestore(fileHash, report, fileBase64);
 
         onResult(report);
       } else if (data.status === "failed") {

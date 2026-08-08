@@ -15,7 +15,7 @@ from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 
 # Wav2Vec2-based voice deepfake/spoof detector, trained on real vs AI-cloned
 # speech (ElevenLabs, Amazon Polly, Kokoro, Hume AI, Speechify, Luvvoice, etc.)
-AUDIO_MODEL_ID = "garystafford/wav2vec2-deepfake-voice-detector"
+AUDIO_MODEL_ID = None # "garystafford/wav2vec2-deepfake-voice-detector" (Hanging on local Windows)
 
 
 class VoiceClassifier:
