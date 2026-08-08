@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import CursorTrail from './components/CursorTrail';
 import Home from './pages/Home';
@@ -9,7 +9,7 @@ import About from './pages/About';
 
 function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <div className="aurora-bg" aria-hidden="true">
         <span className="aurora-blob aurora-blob-1" />
         <span className="aurora-blob aurora-blob-2" />
@@ -26,7 +26,7 @@ function App() {
           <Route path="/about" element={<About />} />
         </Routes>
       </div>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
