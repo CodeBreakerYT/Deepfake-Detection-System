@@ -8,8 +8,9 @@ from PIL import Image
 # Keep HF model downloads inside the repo instead of polluting the user's C: drive cache
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.environ.setdefault("HF_HOME", os.path.join(base_dir, "..", "hf_cache"))
-os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
-os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
+if os.name == "nt":
+    os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+    os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
 
 from transformers import AutoImageProcessor, AutoModelForImageClassification
 
