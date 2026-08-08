@@ -28,7 +28,8 @@ class FirebaseManager:
                 if cred:
                     firebase_admin.initialize_app(cred)
                 else:
-                    firebase_admin.initialize_app()
+                    print("No Firebase credentials provided. Skipping Firebase initialization.")
+                    raise ValueError("Missing Firebase credentials")
 
             self.db = firestore.client()
             print("Connected to Firebase Firestore successfully!")
