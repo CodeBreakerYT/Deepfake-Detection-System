@@ -22,5 +22,21 @@ jobs:
         run: |
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Action"
-          git subtree split --prefix backend -b deploy
-          git push https://CodeBreakerYT:$HF_TOKEN@huggingface.co/spaces/$HF_SPACE deploy:main --force
+          
+          # Create a fresh deployment directory containing only the backend
+          mkdir ../hf_deploy
+          cp -a backend/. ../hf_deploy/
+          cd ../hf_deploy
+          
+          # Initialize a clean git repository
+          git init
+          git lfs install
+          
+          # Force Git LFS to track model weights to prevent Hugging Face's 10MB limit rejection
+          git lfs track "*.pth" "*.pt" "*.bin" "*.h5"
+          
+          git add .
+          git commit -m "Deploy backend to Hugging Face Space"
+          
+          # Force push to the Space (this overwrites the space history with this clean commit)
+          git push https://CodeBreakerYT:$HF_TOKEN@huggingface.co/spaces/$HF_SPACE HEAD:main --force
